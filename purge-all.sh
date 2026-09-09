@@ -126,6 +126,8 @@ rm -f "$TMP_DIR/cve-2026-43499"* \
      "$TMP_DIR/setup-chroot.sh" \
      "$TMP_DIR/start-chroot.sh" \
      "$TMP_DIR/stop-chroot.sh" \
+     "$TMP_DIR/purge-all.sh" \
+     "$TMP_DIR/authorized_keys" \
      "$TMP_DIR/reroot.log" 2>/dev/null || true
 echo "[+] Temporary binaries, sockets, and scripts wiped from $TMP_DIR."
 
