@@ -12,20 +12,41 @@ if [ "$(id -u)" -ne 0 ]; then
     exit 1
 fi
 
-echo "[*] Stopping chroot processes and Tailscaled..."
+echo "[*] Terminating processes running inside chroot..."
+# Terminate any process jailed inside CHROOT_DIR (matches via /proc/*/root)
+for p in /proc/[0-9]*; do
+    if [ "$(readlink "$p/root" 2>/dev/null)" = "$CHROOT_DIR" ]; then
+        pid="${p#/proc/}"
+        kill -9 "$pid" 2>/dev/null || true
+    fi
+done
+
+# Terminate tailscaled and any process with CHROOT_DIR in cmdline
 pkill -9 -f "tailscaled" 2>/dev/null || true
 pkill -9 -f "$CHROOT_DIR" 2>/dev/null || true
 
 echo "[*] Safely unmounting virtual filesystems (lazy umount)..."
-umount -l "$CHROOT_DIR/dev/pts" 2>/dev/null || true
-umount -l "$CHROOT_DIR/dev" 2>/dev/null || true
-umount -l "$CHROOT_DIR/proc" 2>/dev/null || true
-umount -l "$CHROOT_DIR/sys" 2>/dev/null || true
+# Unmount standard submounts first
+for m in "$CHROOT_DIR/dev/pts" "$CHROOT_DIR/dev/net" "$CHROOT_DIR/dev" "$CHROOT_DIR/proc" "$CHROOT_DIR/sys"; do
+    if grep -q " $m " /proc/mounts 2>/dev/null; then
+        umount -l "$m" 2>/dev/null || true
+    fi
+done
 
-# Check if any lingering mounts remain
-if grep -q "$CHROOT_DIR" /proc/mounts 2>/dev/null; then
-    echo "[!] Some mount points remain active, force unmounting..."
-    umount -f -R "$CHROOT_DIR" 2>/dev/null || true
+# Unmount any remaining submounts under CHROOT_DIR in /proc/mounts
+# (Avoids non-standard 'umount -R' which fails on Android toybox)
+grep " $CHROOT_DIR" /proc/mounts 2>/dev/null | while read -r _ mpoint _; do
+    [ -n "$mpoint" ] && umount -l "$mpoint" 2>/dev/null || true
+done
+
+sleep 1
+
+# Final check
+if grep -q " $CHROOT_DIR" /proc/mounts 2>/dev/null; then
+    echo "[!] Some mount points remain active, retrying lazy unmount..."
+    grep " $CHROOT_DIR" /proc/mounts 2>/dev/null | while read -r _ mpoint _; do
+        [ -n "$mpoint" ] && umount -f -l "$mpoint" 2>/dev/null || true
+    done
 fi
 
 echo "[+] Chroot environment and services stopped successfully."

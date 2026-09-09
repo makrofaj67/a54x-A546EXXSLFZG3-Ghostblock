@@ -11,6 +11,9 @@ adb wait-for-device
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TMP_DIR="$SCRIPT_DIR/tmp"
 
+echo "[*] Ensuring /data/local/tmp directory exists..."
+adb shell "mkdir -p /data/local/tmp"
+
 echo "[*] Pushing cleaned and socket-aligned binaries to device..."
 adb push "$TMP_DIR/cve-2026-43499-root" /data/local/tmp/
 adb push "$TMP_DIR/libcve43499root.so" /data/local/tmp/
@@ -27,11 +30,13 @@ adb push "$SCRIPT_DIR/stop-chroot.sh" /data/local/tmp/
 adb push "$SCRIPT_DIR/setup-chroot.sh" /data/local/tmp/
 adb push "$SCRIPT_DIR/device-reroot.sh" /data/local/tmp/
 
-echo "[*] Setting executable permissions (chmod 755)..."
+echo "[*] Setting executable and library permissions..."
 adb shell "chmod 755 /data/local/tmp/cve-2026-43499-root \
                      /data/local/tmp/libcve43499root.so \
-                     /data/local/tmp/ksud-s25u-kdp \
+                     /data/local/tmp/ksud-* \
                      /data/local/tmp/*.sh 2>/dev/null || true"
+
+adb shell "chmod 644 /data/local/tmp/cve-2026-43499*.so 2>/dev/null || true"
 
 # Remove legacy/conflicting socket files if present
 adb shell "rm -f /data/local/tmp/tem3_su.sock /data/local/tmp/temp_su.sock"
