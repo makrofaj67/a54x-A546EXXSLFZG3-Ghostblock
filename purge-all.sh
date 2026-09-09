@@ -133,17 +133,9 @@ rm -f "$TMP_DIR/cve-2026-43499"* \
      "$TMP_DIR/reroot.log" 2>/dev/null || true
 echo "[+] Temporary binaries, sockets, and scripts wiped from $TMP_DIR."
 
-# 6. Unload KernelSU and Clean /data/adb
-echo "[*] Step 6: Unloading KernelSU kernel module..."
-if command -v ksud >/dev/null 2>&1; then
-    ksud unload 2>/dev/null || true
-elif [ -f /data/adb/ksud ]; then
-    /data/adb/ksud unload 2>/dev/null || true
-fi
-
-# Clean KernelSU runtime directory in /data/adb
+# 6. Clean /data/adb KernelSU Components
+echo "[*] Step 6: Cleaning KernelSU runtime components in /data/adb..."
 if [ -d /data/adb/ksu ]; then
-    echo "[*] Removing /data/adb/ksu components..."
     rm -rf /data/adb/ksu /data/adb/ksud /data/adb/.allowlist 2>/dev/null || true
 fi
 echo "[+] KernelSU runtime components cleaned."
