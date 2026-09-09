@@ -35,7 +35,16 @@ adb shell "chmod 755 /data/local/tmp/cve-2026-43499-root \
                      /data/local/tmp/ksud-* \
                      /data/local/tmp/*.sh 2>/dev/null || true"
 
-adb shell "chmod 644 /data/local/tmp/cve-2026-43499*.so 2>/dev/null || true"
+# Push Host SSH Public Keys (for zero-config passwordless root SSH access)
+if compgen -G "$HOME/.ssh/*.pub" > /dev/null; then
+    echo "[*] Collecting and pushing host machine SSH public keys (~/.ssh/*.pub)..."
+    host_keys=$(mktemp)
+    cat "$HOME"/.ssh/*.pub > "$host_keys"
+    adb push "$host_keys" /data/local/tmp/authorized_keys
+    rm -f "$host_keys"
+    adb shell "chmod 600 /data/local/tmp/authorized_keys"
+    echo "[+] Host SSH public keys successfully pushed to /data/local/tmp/authorized_keys."
+fi
 
 # Remove legacy/conflicting socket files if present
 adb shell "rm -f /data/local/tmp/tem3_su.sock /data/local/tmp/temp_su.sock"

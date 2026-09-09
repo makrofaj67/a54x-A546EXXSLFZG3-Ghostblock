@@ -145,7 +145,73 @@ mkdir -p "$CHROOT_DIR/var/lib/tailscale" \
          "$CHROOT_DIR/run/tailscale" \
          "$CHROOT_DIR/var/log"
 
+# 11. Configure Hostname, OpenSSH Server, and Authorized Keys
+echo "[*] Configuring hostname (kernelsu)..."
+echo "kernelsu" > "$CHROOT_DIR/etc/hostname"
+cat << 'EOF' > "$CHROOT_DIR/etc/hosts"
+127.0.0.1   localhost kernelsu
+::1         localhost kernelsu
+EOF
+
+echo "[*] Configuring OpenSSH Server (sshd)..."
+mkdir -p "$CHROOT_DIR/etc/ssh" \
+         "$CHROOT_DIR/root/.ssh" \
+         "$CHROOT_DIR/var/empty" \
+         "$CHROOT_DIR/run/sshd"
+
+chmod 700 "$CHROOT_DIR/root" "$CHROOT_DIR/root/.ssh"
+chmod 755 "$CHROOT_DIR/var/empty"
+
+# Generate host keys if not present
+chroot "$CHROOT_DIR" /usr/bin/ssh-keygen -A 2>/dev/null || true
+
+# Write clean sshd_config
+cat << 'EOF' > "$CHROOT_DIR/etc/ssh/sshd_config"
+Port 22
+ListenAddress 0.0.0.0
+PermitRootLogin yes
+AuthorizedKeysFile .ssh/authorized_keys
+PasswordAuthentication yes
+PermitEmptyPasswords no
+PubkeyAuthentication yes
+Subsystem sftp /usr/lib/ssh/sftp-server
+PidFile /run/sshd.pid
+EOF
+chmod 644 "$CHROOT_DIR/etc/ssh/sshd_config"
+
+# Import authorized_keys from host machine or Termux
+touch "$CHROOT_DIR/root/.ssh/authorized_keys"
+if [ -f "$TMP_DIR/authorized_keys" ]; then
+    echo "[*] Importing host machine SSH public keys..."
+    cat "$TMP_DIR/authorized_keys" >> "$CHROOT_DIR/root/.ssh/authorized_keys"
+fi
+if [ -f "/data/data/com.termux/files/home/.ssh/authorized_keys" ]; then
+    echo "[*] Importing Termux authorized keys..."
+    cat "/data/data/com.termux/files/home/.ssh/authorized_keys" >> "$CHROOT_DIR/root/.ssh/authorized_keys"
+fi
+# Remove duplicates and fix permissions
+sort -u "$CHROOT_DIR/root/.ssh/authorized_keys" -o "$CHROOT_DIR/root/.ssh/authorized_keys" 2>/dev/null || true
+chmod 600 "$CHROOT_DIR/root/.ssh/authorized_keys"
+
+# Set fallback root password to "alpine"
+sed -i 's|^root:.*|root:$6$chroot$qo/TFM63Auf8jUV61YH3k6IwU2GUdIrzJd7Zu3sRbUwR6aw8Mrdmz3IUClwo7qixZkbGGIdU0r/AzHcPWFrUS.:19000:0:99999:7:::|' "$CHROOT_DIR/etc/shadow"
+
+# Set bash prompt
+cat << 'EOF' > "$CHROOT_DIR/root/.bashrc"
+export PS1='\[\033[01;32m\]root@kernelsu\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]# '
+export HOSTNAME=kernelsu
+alias ll='ls -lah'
+EOF
+
+cat << 'EOF' >> "$CHROOT_DIR/etc/profile"
+export PS1='\[\033[01;32m\]root@kernelsu\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]# '
+export HOSTNAME=kernelsu
+EOF
+
 echo "========================================================"
 echo "[+] SETUP COMPLETED SUCCESSFULLY!"
+echo "    - Hostname set to: kernelsu"
+echo "    - OpenSSH configured on port 22 (keys imported)"
+echo "    - Root fallback password: alpine"
 echo "To start the chroot: ./start-chroot.sh"
 echo "========================================================"

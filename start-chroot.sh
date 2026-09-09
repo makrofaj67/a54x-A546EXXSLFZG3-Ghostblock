@@ -62,6 +62,13 @@ nameserver 1.1.1.1
 nameserver 8.8.8.8
 EOF
 
+# Auto-sync new host authorized_keys if pushed via sync-to-phone.sh
+if [ -f "/data/local/tmp/authorized_keys" ] && [ -d "$CHROOT_DIR/root/.ssh" ]; then
+    cat "/data/local/tmp/authorized_keys" >> "$CHROOT_DIR/root/.ssh/authorized_keys" 2>/dev/null || true
+    sort -u "$CHROOT_DIR/root/.ssh/authorized_keys" -o "$CHROOT_DIR/root/.ssh/authorized_keys" 2>/dev/null || true
+    chmod 600 "$CHROOT_DIR/root/.ssh/authorized_keys" 2>/dev/null || true
+fi
+
 # Android multi-table routing fix: route chroot traffic through active interface
 route_info=$(ip route get 1.1.1.1 2>/dev/null || true)
 case "$route_info" in
