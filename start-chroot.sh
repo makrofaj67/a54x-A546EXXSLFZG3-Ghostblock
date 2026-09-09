@@ -94,22 +94,17 @@ case "$1" in
 esac
 
 is_tailscaled_running() {
-    if command -v pgrep >/dev/null 2>&1; then
-        pgrep -f "tailscaled" >/dev/null 2>&1
-    elif command -v pidof >/dev/null 2>&1; then
-        pidof tailscaled >/dev/null 2>&1
-    else
-        ps | grep -v grep | grep -q "tailscaled"
-    fi
+    pidof tailscaled >/dev/null 2>&1 || pgrep -x tailscaled >/dev/null 2>&1
 }
 
 if ! is_tailscaled_running; then
     echo "[*] Starting tailscaled daemon..."
+    rm -f "$CHROOT_DIR/run/tailscale/tailscaled.sock" 2>/dev/null || true
     chroot "$CHROOT_DIR" /usr/bin/env \
         PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
         HOME=/root \
         TS_NETFILTER_MODE=off \
-        tailscaled --state=/var/lib/tailscale/tailscaled.state --socket=/run/tailscale/tailscaled.sock > "$CHROOT_DIR/var/log/tailscaled.log" 2>&1 &
+        tailscaled --state=/var/lib/tailscale/tailscaled.state --socket=/run/tailscale/tailscaled.sock >> "$CHROOT_DIR/var/log/tailscaled.log" 2>&1 &
     sleep 2
 else
     echo "[*] tailscaled is already running."
@@ -119,6 +114,13 @@ fi
 case "$1" in
     daemon)
         echo "[+] Chroot and Tailscale are active in background!"
+        ;;
+    status)
+        echo "[*] Tailscale Status:"
+        chroot "$CHROOT_DIR" /usr/bin/env \
+            PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+            HOME=/root \
+            tailscale --socket=/run/tailscale/tailscaled.sock status
         ;;
     up)
         shift
