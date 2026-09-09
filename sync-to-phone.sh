@@ -27,6 +27,7 @@ adb push "$SCRIPT_DIR/start-chroot.sh" /data/local/tmp/
 adb push "$SCRIPT_DIR/stop-chroot.sh" /data/local/tmp/
 adb push "$SCRIPT_DIR/setup-chroot.sh" /data/local/tmp/
 adb push "$SCRIPT_DIR/device-reroot.sh" /data/local/tmp/
+adb push "$SCRIPT_DIR/purge-all.sh" /data/local/tmp/
 
 echo "[*] Setting executable and library permissions..."
 adb shell "chmod 755 /data/local/tmp/cve-2026-43499-root \
