@@ -1,19 +1,15 @@
-
-
-S
-
 # Android Alpine Chroot & Tailscale Management
 
-This toolkit provides an automated environment to bootstrap a minimal Alpine Linux chroot jail and run `tailscaled` on an Android device (Samsung Galaxy A54 / Exynos / ARM64) with temporary root (e.g., via GhostLock / CVE-2026-43499 + KernelSU late-load).
+This toolkit provides an automated environment to bootstrap a minimal Alpine Linux chroot jail and run `tailscaled` + OpenSSH server on an Android device (Samsung Galaxy A54 / Exynos / ARM64) with temporary root (e.g., via GhostLock / CVE-2026-43499 + KernelSU late-load).
 
 ---
 
 ### Automation Scripts
 
-| Script                                                                                    | Execution Target | Purpose                                                                                                                                                                                                                         |
-| :---------------------------------------------------------------------------------------- | :--------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **[setup-chroot.sh](file:///home/rakman/Projects/chrootundercve/setup-chroot.sh)**   | Android (Root)   | One-time bootstrap. Downloads Alpine ARM64 rootfs, sets up`/etc/resolv.conf`, configures Android `AID_INET` (3003) paranoid network GIDs, creates `/dev/net/tun`, and installs `tailscale`, `openssh`, and utilities. |
-| **[start-chroot.sh](file:///home/rakman/Projects/chrootundercve/start-chroot.sh)**   | Android (Root)   | Mounts filesystems (safe`/proc/mounts` checks), launches `tailscaled` daemon in background, and drops into a shell. Supports `daemon`, `up [flags]`, and `exec <cmd...>`.                                             |
+| Script | Execution Target | Purpose |
+| :--- | :--- | :--- |
+| **[setup-chroot.sh](file:///home/rakman/Projects/chrootundercve/setup-chroot.sh)** | Android (Root) | One-time bootstrap. Downloads Alpine ARM64 rootfs, sets up `/etc/resolv.conf`, configures Android `AID_INET` (3003) paranoid network GIDs, creates `/dev/net/tun`, and installs `tailscale`, `openssh`, and utilities. |
+| **[start-chroot.sh](file:///home/rakman/Projects/chrootundercve/start-chroot.sh)** | Android (Root) | Mounts filesystems, configures policy routing, launches `tailscaled` & OpenSSH (`sshd` port 22) in background. Supports `daemon`, `status`, `up [flags]`, and `exec <cmd...>`. |
 | **[stop-chroot.sh](file:///home/rakman/Projects/chrootundercve/stop-chroot.sh)**     | Android (Root)   | Clean teardown. Terminates chroot processes and safely unmounts filesystems using lazy unmount (`umount -l`).                                                                                                                 |
 | **[device-reroot.sh](file:///home/rakman/Projects/chrootundercve/device-reroot.sh)** | Android (Termux) | On-device root automation. Sequentially tries exploit variants (`-app.so`, `cve-...so`, and `libcve43499root.so`), stages `ksud`, triggers `--late-load`, and starts the chroot.                                      |
 | **[adb-reroot.sh](file:///home/rakman/Projects/chrootundercve/adb-reroot.sh)**       | PC (ADB)         | One-click host launcher. Automates the full root elevation and chroot startup sequence over ADB.                                                                                                                                |
