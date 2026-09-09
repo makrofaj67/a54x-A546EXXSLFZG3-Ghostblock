@@ -143,7 +143,6 @@ chroot "$CHROOT_DIR" /usr/bin/env -i \
 # Runtime directories for Tailscale and logs
 mkdir -p "$CHROOT_DIR/var/lib/tailscale" \
          "$CHROOT_DIR/run/tailscale" \
-         "$CHROOT_DIR/var/run/tailscale" \
          "$CHROOT_DIR/var/log"
 
 echo "========================================================"

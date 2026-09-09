@@ -56,17 +56,42 @@ mount_if_needed "$CHROOT_DIR/dev/pts" -t devpts devpts
 # Prevent mounts from leaking back to Android host namespaces
 mount --make-rslave "$CHROOT_DIR" 2>/dev/null || true
 
-# 4. Ensure Valid DNS
+# 4. Ensure Valid DNS and Android Routing
 cat << 'EOF' > "$CHROOT_DIR/etc/resolv.conf"
 nameserver 1.1.1.1
 nameserver 8.8.8.8
 EOF
 
-# 5. Start tailscaled (if not already running)
+# Android multi-table routing fix: route chroot traffic through active interface
+route_info=$(ip route get 1.1.1.1 2>/dev/null || true)
+case "$route_info" in
+    *dev\ *)
+        def_if="${route_info#*dev }"
+        def_if="${def_if%% *}"
+        if [ -n "$def_if" ]; then
+            gw=$(ip route show table "$def_if" 2>/dev/null | grep default | awk '{print $3}')
+            if [ -n "$gw" ]; then
+                ip route replace default via "$gw" dev "$def_if" 2>/dev/null || true
+            else
+                ip route replace default dev "$def_if" 2>/dev/null || true
+            fi
+            ip rule del pref 9000 2>/dev/null || true
+            ip rule add from all lookup "$def_if" pref 9000 2>/dev/null || true
+        fi
+        ;;
+esac
+
+# 5. Start tailscaled (restart if running 'up' to ensure fresh network routes)
 mkdir -p "$CHROOT_DIR/var/lib/tailscale" \
          "$CHROOT_DIR/run/tailscale" \
-         "$CHROOT_DIR/var/run/tailscale" \
          "$CHROOT_DIR/var/log"
+
+case "$1" in
+    up|restart)
+        pkill -9 -f "tailscaled" 2>/dev/null || true
+        sleep 1
+        ;;
+esac
 
 is_tailscaled_running() {
     if command -v pgrep >/dev/null 2>&1; then
@@ -83,8 +108,9 @@ if ! is_tailscaled_running; then
     chroot "$CHROOT_DIR" /usr/bin/env \
         PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
         HOME=/root \
+        TS_NETFILTER_MODE=off \
         tailscaled --state=/var/lib/tailscale/tailscaled.state --socket=/run/tailscale/tailscaled.sock > "$CHROOT_DIR/var/log/tailscaled.log" 2>&1 &
-    sleep 1
+    sleep 2
 else
     echo "[*] tailscaled is already running."
 fi
