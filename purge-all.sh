@@ -30,7 +30,8 @@ fi
 echo "[*] Step 1: Terminating all chroot processes (tailscaled, sshd, etc.)..."
 # Graceful SIGTERM
 pkill -15 -f "tailscaled" 2>/dev/null || true
-pkill -15 -f "sshd" 2>/dev/null || true
+pkill -15 -u root -x "sshd" 2>/dev/null || true
+[ -f "$CHROOT_DIR/run/sshd.pid" ] && kill -15 "$(cat "$CHROOT_DIR/run/sshd.pid" 2>/dev/null)" 2>/dev/null || true
 for p in /proc/[0-9]*; do
     if [ "$(readlink "$p/root" 2>/dev/null)" = "$CHROOT_DIR" ]; then
         kill -15 "${p#/proc/}" 2>/dev/null || true
@@ -40,7 +41,8 @@ sleep 1
 
 # Force SIGKILL
 pkill -9 -f "tailscaled" 2>/dev/null || true
-pkill -9 -f "sshd" 2>/dev/null || true
+pkill -9 -u root -x "sshd" 2>/dev/null || true
+[ -f "$CHROOT_DIR/run/sshd.pid" ] && kill -9 "$(cat "$CHROOT_DIR/run/sshd.pid" 2>/dev/null)" 2>/dev/null || true
 for p in /proc/[0-9]*; do
     if [ "$(readlink "$p/root" 2>/dev/null)" = "$CHROOT_DIR" ]; then
         kill -9 "${p#/proc/}" 2>/dev/null || true
