@@ -112,14 +112,18 @@ fi
 
 # 5b. Start OpenSSH Server (sshd)
 is_sshd_running() {
-    pidof sshd >/dev/null 2>&1 || pgrep -x sshd >/dev/null 2>&1
+    if [ -f "$CHROOT_DIR/run/sshd.pid" ] && kill -0 "$(cat "$CHROOT_DIR/run/sshd.pid" 2>/dev/null)" 2>/dev/null; then
+        return 0
+    fi
+    pgrep -u root -x sshd >/dev/null 2>&1
 }
 
 if ! is_sshd_running; then
     echo "[*] Starting OpenSSH server (sshd) on port 22..."
     mkdir -p "$CHROOT_DIR/var/empty" "$CHROOT_DIR/run/sshd" 2>/dev/null || true
     chmod 755 "$CHROOT_DIR/var/empty" 2>/dev/null || true
-    chroot "$CHROOT_DIR" /usr/sbin/sshd 2>/dev/null || true
+    chroot "$CHROOT_DIR" /usr/sbin/sshd
+    sleep 1
 else
     echo "[*] sshd is already running."
 fi
