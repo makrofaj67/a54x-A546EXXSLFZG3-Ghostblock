@@ -110,12 +110,34 @@ else
     echo "[*] tailscaled is already running."
 fi
 
+# 5b. Start OpenSSH Server (sshd)
+is_sshd_running() {
+    pidof sshd >/dev/null 2>&1 || pgrep -x sshd >/dev/null 2>&1
+}
+
+if ! is_sshd_running; then
+    echo "[*] Starting OpenSSH server (sshd) on port 22..."
+    mkdir -p "$CHROOT_DIR/var/empty" "$CHROOT_DIR/run/sshd" 2>/dev/null || true
+    chmod 755 "$CHROOT_DIR/var/empty" 2>/dev/null || true
+    chroot "$CHROOT_DIR" /usr/sbin/sshd 2>/dev/null || true
+else
+    echo "[*] sshd is already running."
+fi
+
 # 6. Dispatch Action Based on Argument
 case "$1" in
     daemon)
-        echo "[+] Chroot and Tailscale are active in background!"
+        echo "[+] Chroot, OpenSSH (port 22) and Tailscale are active in background!"
         ;;
     status)
+        echo "=========================================="
+        echo "[*] Hostname: $(cat "$CHROOT_DIR/etc/hostname" 2>/dev/null || echo unknown)"
+        if is_sshd_running; then
+            echo "[+] OpenSSH server (sshd): RUNNING (Port 22)"
+        else
+            echo "[-] OpenSSH server (sshd): STOPPED"
+        fi
+        echo "=========================================="
         echo "[*] Tailscale Status:"
         chroot "$CHROOT_DIR" /usr/bin/env \
             PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
@@ -124,11 +146,11 @@ case "$1" in
         ;;
     up)
         shift
-        echo "[*] Triggering Tailscale connection..."
+        echo "[*] Triggering Tailscale connection (hostname: kernelsu)..."
         chroot "$CHROOT_DIR" /usr/bin/env \
             PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
             HOME=/root \
-            tailscale --socket=/run/tailscale/tailscaled.sock up "$@"
+            tailscale --socket=/run/tailscale/tailscaled.sock up --hostname=kernelsu "$@"
         ;;
     exec)
         shift

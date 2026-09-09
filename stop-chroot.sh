@@ -21,8 +21,9 @@ for p in /proc/[0-9]*; do
     fi
 done
 
-# Also send SIGTERM to tailscaled
+# Also send SIGTERM to tailscaled and sshd
 pkill -15 -f "tailscaled" 2>/dev/null || true
+pkill -15 -f "sshd" 2>/dev/null || true
 sleep 1
 
 # Force kill any lingering processes
@@ -33,6 +34,7 @@ for p in /proc/[0-9]*; do
     fi
 done
 pkill -9 -f "tailscaled" 2>/dev/null || true
+pkill -9 -f "sshd" 2>/dev/null || true
 pkill -9 -f "$CHROOT_DIR" 2>/dev/null || true
 
 # Brief pause to allow kernel to reclaim file descriptors
