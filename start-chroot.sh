@@ -3,9 +3,10 @@
 # Alpine Linux Chroot - Startup Script (Android / Termux)
 # ==============================================================================
 # Usage:
-#   ./start-chroot.sh          -> Mounts filesystems, starts tailscaled, drops into shell
-#   ./start-chroot.sh daemon   -> Mounts filesystems and runs tailscaled in background
-#   ./start-chroot.sh up       -> Runs 'tailscale up' to generate the auth/login URL
+#   ./start-chroot.sh             -> Mounts filesystems, starts tailscaled, drops into shell
+#   ./start-chroot.sh daemon      -> Mounts filesystems and runs tailscaled in background
+#   ./start-chroot.sh up [flags]  -> Runs 'tailscale up' (passes extra flags like --ssh)
+#   ./start-chroot.sh exec <cmd>  -> Executes a command inside the chroot environment
 # ==============================================================================
 
 CHROOT_DIR="/data/local/chroot"
@@ -28,7 +29,11 @@ setenforce 0 2>/dev/null || true
 # 2. Check /dev/net/tun Device
 if [ ! -c /dev/net/tun ]; then
     mkdir -p /dev/net
-    mknod /dev/net/tun c 10 200 2>/dev/null || true
+    if [ -c /dev/tun ]; then
+        ln -sf /dev/tun /dev/net/tun 2>/dev/null || true
+    else
+        mknod /dev/net/tun c 10 200 2>/dev/null || true
+    fi
     chmod 666 /dev/net/tun 2>/dev/null || true
 fi
 
@@ -48,6 +53,9 @@ mount_if_needed "$CHROOT_DIR/dev" --bind /dev
 mkdir -p "$CHROOT_DIR/dev/pts"
 mount_if_needed "$CHROOT_DIR/dev/pts" -t devpts devpts
 
+# Prevent mounts from leaking back to Android host namespaces
+mount --make-rslave "$CHROOT_DIR" 2>/dev/null || true
+
 # 4. Ensure Valid DNS
 cat << 'EOF' > "$CHROOT_DIR/etc/resolv.conf"
 nameserver 1.1.1.1
@@ -55,11 +63,26 @@ nameserver 8.8.8.8
 EOF
 
 # 5. Start tailscaled (if not already running)
-mkdir -p "$CHROOT_DIR/var/lib/tailscale" "$CHROOT_DIR/run/tailscale" "$CHROOT_DIR/var/run/tailscale"
-if ! pgrep -f "tailscaled" > /dev/null 2>&1; then
+mkdir -p "$CHROOT_DIR/var/lib/tailscale" \
+         "$CHROOT_DIR/run/tailscale" \
+         "$CHROOT_DIR/var/run/tailscale" \
+         "$CHROOT_DIR/var/log"
+
+is_tailscaled_running() {
+    if command -v pgrep >/dev/null 2>&1; then
+        pgrep -f "tailscaled" >/dev/null 2>&1
+    elif command -v pidof >/dev/null 2>&1; then
+        pidof tailscaled >/dev/null 2>&1
+    else
+        ps | grep -v grep | grep -q "tailscaled"
+    fi
+}
+
+if ! is_tailscaled_running; then
     echo "[*] Starting tailscaled daemon..."
     chroot "$CHROOT_DIR" /usr/bin/env \
         PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+        HOME=/root \
         tailscaled --state=/var/lib/tailscale/tailscaled.state --socket=/run/tailscale/tailscaled.sock > "$CHROOT_DIR/var/log/tailscaled.log" 2>&1 &
     sleep 1
 else
@@ -72,14 +95,31 @@ case "$1" in
         echo "[+] Chroot and Tailscale are active in background!"
         ;;
     up)
+        shift
         echo "[*] Triggering Tailscale connection..."
         chroot "$CHROOT_DIR" /usr/bin/env \
             PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
-            tailscale --socket=/run/tailscale/tailscaled.sock up
+            HOME=/root \
+            tailscale --socket=/run/tailscale/tailscaled.sock up "$@"
+        ;;
+    exec)
+        shift
+        export TERM=xterm-256color
+        export HOME=/root
+        chroot "$CHROOT_DIR" /usr/bin/env \
+            PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+            TERM=xterm-256color \
+            HOME=/root \
+            "$@"
         ;;
     *)
         echo "[+] Entering chroot environment (/bin/bash)..."
         export TERM=xterm-256color
-        chroot "$CHROOT_DIR" /bin/bash -l || chroot "$CHROOT_DIR" /bin/sh -l
+        export HOME=/root
+        chroot "$CHROOT_DIR" /usr/bin/env \
+            PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+            TERM=xterm-256color \
+            HOME=/root \
+            /bin/bash -l || chroot "$CHROOT_DIR" /bin/sh -l
         ;;
 esac

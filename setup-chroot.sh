@@ -28,10 +28,12 @@ setenforce 0 2>/dev/null || true
 # 2. Clean up previous installation if present
 if [ -d "$CHROOT_DIR" ]; then
     echo "[*] Existing $CHROOT_DIR directory found. Safely cleaning up..."
-    umount -l "$CHROOT_DIR/dev/pts" 2>/dev/null || true
-    umount -l "$CHROOT_DIR/dev" 2>/dev/null || true
-    umount -l "$CHROOT_DIR/proc" 2>/dev/null || true
-    umount -l "$CHROOT_DIR/sys" 2>/dev/null || true
+    for m in "$CHROOT_DIR/dev/pts" "$CHROOT_DIR/dev/net" "$CHROOT_DIR/dev" "$CHROOT_DIR/proc" "$CHROOT_DIR/sys"; do
+        umount -l "$m" 2>/dev/null || true
+    done
+    grep " $CHROOT_DIR" /proc/mounts 2>/dev/null | while read -r _ mpoint _; do
+        [ -n "$mpoint" ] && umount -l "$mpoint" 2>/dev/null || true
+    done
     sleep 1
     rm -rf "$CHROOT_DIR" 2>/dev/null || true
 fi
@@ -54,19 +56,27 @@ else
     exit 1
 fi
 
-# 4. Download Alpine RootFS
+# 4. Check for Corrupted / Incomplete Archive
+if [ -f "$ALPINE_TAR" ]; then
+    if ! tar -tzf "$ALPINE_TAR" >/dev/null 2>&1; then
+        echo "[!] Corrupted or truncated archive detected. Removing..."
+        rm -f "$ALPINE_TAR"
+    fi
+fi
+
+# 5. Download Alpine RootFS
 if [ ! -f "$ALPINE_TAR" ]; then
     echo "[*] Downloading Alpine Linux (${ALPINE_TAR})..."
     $FETCH "$ALPINE_TAR" "$ALPINE_URL"
 else
-    echo "[*] Archive already downloaded: $TMP_DIR/$ALPINE_TAR"
+    echo "[*] Verified valid archive exists: $TMP_DIR/$ALPINE_TAR"
 fi
 
-# 5. Extract Archive
+# 6. Extract Archive
 echo "[*] Extracting rootfs to $CHROOT_DIR..."
 tar -xpf "$ALPINE_TAR" -C "$CHROOT_DIR"
 
-# 6. Configure DNS and Networking
+# 7. Configure DNS and Networking
 echo "[*] Configuring DNS..."
 mkdir -p "$CHROOT_DIR/etc"
 cat << 'EOF' > "$CHROOT_DIR/etc/resolv.conf"
@@ -84,15 +94,19 @@ aid_net_raw:x:3004:root
 aid_net_admin:x:3005:root
 EOF
 
-# 7. Check and create /dev/net/tun if missing
+# 8. Check and create /dev/net/tun if missing
 if [ ! -c /dev/net/tun ]; then
-    echo "[*] Creating /dev/net/tun character device..."
+    echo "[*] Setting up /dev/net/tun..."
     mkdir -p /dev/net
-    mknod /dev/net/tun c 10 200 2>/dev/null || true
+    if [ -c /dev/tun ]; then
+        ln -sf /dev/tun /dev/net/tun 2>/dev/null || true
+    else
+        mknod /dev/net/tun c 10 200 2>/dev/null || true
+    fi
     chmod 666 /dev/net/tun 2>/dev/null || true
 fi
 
-# 8. Mount Virtual Filesystems (with duplication check)
+# 9. Mount Virtual Filesystems (with duplication check)
 mount_if_needed() {
     target="$1"
     shift
@@ -111,7 +125,7 @@ mount_if_needed "$CHROOT_DIR/dev/pts" -t devpts devpts
 # Prevent mounts from leaking back to Android host namespaces
 mount --make-rslave "$CHROOT_DIR" 2>/dev/null || true
 
-# 9. Update Repositories and Install Packages
+# 10. Update Repositories and Install Packages
 echo "[*] Updating Alpine repositories and installing packages..."
 cat << EOF > "$CHROOT_DIR/etc/apk/repositories"
 https://dl-cdn.alpinelinux.org/alpine/${ALPINE_VER}/main
@@ -119,15 +133,18 @@ https://dl-cdn.alpinelinux.org/alpine/${ALPINE_VER}/community
 EOF
 
 # Note: In Alpine, the 'iptables' package includes both iptables and ip6tables.
-# We set standard Linux PATH so apk post-install scripts and binaries execute correctly.
+# We set standard Linux PATH and HOME so apk post-install scripts execute correctly.
 chroot "$CHROOT_DIR" /usr/bin/env -i \
     PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
     TERM=xterm-256color \
     HOME=/root \
     /bin/sh -c "apk update && apk add --no-cache tailscale openssh iptables ca-certificates curl bash neovim tmux"
 
-# Tailscale runtime directories
-mkdir -p "$CHROOT_DIR/var/lib/tailscale" "$CHROOT_DIR/run/tailscale" "$CHROOT_DIR/var/run/tailscale"
+# Runtime directories for Tailscale and logs
+mkdir -p "$CHROOT_DIR/var/lib/tailscale" \
+         "$CHROOT_DIR/run/tailscale" \
+         "$CHROOT_DIR/var/run/tailscale" \
+         "$CHROOT_DIR/var/log"
 
 echo "========================================================"
 echo "[+] SETUP COMPLETED SUCCESSFULLY!"

@@ -9,7 +9,7 @@ echo "[*] Waiting for ADB device..."
 adb wait-for-device
 
 echo "[*] Stage 1: Setting file permissions..."
-adb shell "chmod +x /data/local/tmp/cve-2026-43499-root /data/local/tmp/libcve43499root.so /data/local/tmp/ksud-s25u-kdp 2>/dev/null || true"
+adb shell "chmod +x /data/local/tmp/cve-2026-43499-root /data/local/tmp/libcve43499root.so /data/local/tmp/ksud-* 2>/dev/null || true"
 
 ACTIVE_HELPER=""
 

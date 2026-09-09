@@ -15,14 +15,12 @@ echo "[*] Ensuring /data/local/tmp directory exists..."
 adb shell "mkdir -p /data/local/tmp"
 
 echo "[*] Pushing cleaned and socket-aligned binaries to device..."
-adb push "$TMP_DIR/cve-2026-43499-root" /data/local/tmp/
-adb push "$TMP_DIR/libcve43499root.so" /data/local/tmp/
-adb push "$TMP_DIR/cve-2026-43499.so" /data/local/tmp/
-adb push "$TMP_DIR/cve-2026-43499-app.so" /data/local/tmp/
-adb push "$TMP_DIR/ksud-s25u-kdp" /data/local/tmp/
-if [ -f "$TMP_DIR/ksud-next-a54x-A546EXXSKFZF4-kdp" ]; then
-    adb push "$TMP_DIR/ksud-next-a54x-A546EXXSKFZF4-kdp" /data/local/tmp/
-fi
+[ -f "$TMP_DIR/cve-2026-43499-root" ] && adb push "$TMP_DIR/cve-2026-43499-root" /data/local/tmp/
+[ -f "$TMP_DIR/libcve43499root.so" ] && adb push "$TMP_DIR/libcve43499root.so" /data/local/tmp/
+[ -f "$TMP_DIR/cve-2026-43499.so" ] && adb push "$TMP_DIR/cve-2026-43499.so" /data/local/tmp/
+[ -f "$TMP_DIR/cve-2026-43499-app.so" ] && adb push "$TMP_DIR/cve-2026-43499-app.so" /data/local/tmp/
+[ -f "$TMP_DIR/ksud-s25u-kdp" ] && adb push "$TMP_DIR/ksud-s25u-kdp" /data/local/tmp/
+[ -f "$TMP_DIR/ksud-next-a54x-A546EXXSKFZF4-kdp" ] && adb push "$TMP_DIR/ksud-next-a54x-A546EXXSKFZF4-kdp" /data/local/tmp/
 
 echo "[*] Pushing chroot management scripts..."
 adb push "$SCRIPT_DIR/start-chroot.sh" /data/local/tmp/

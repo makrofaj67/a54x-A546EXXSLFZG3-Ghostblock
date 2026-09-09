@@ -17,13 +17,26 @@ echo "[*] Terminating processes running inside chroot..."
 for p in /proc/[0-9]*; do
     if [ "$(readlink "$p/root" 2>/dev/null)" = "$CHROOT_DIR" ]; then
         pid="${p#/proc/}"
-        kill -9 "$pid" 2>/dev/null || true
+        kill -15 "$pid" 2>/dev/null || true
     fi
 done
 
-# Terminate tailscaled and any process with CHROOT_DIR in cmdline
+# Also send SIGTERM to tailscaled
+pkill -15 -f "tailscaled" 2>/dev/null || true
+sleep 1
+
+# Force kill any lingering processes
+for p in /proc/[0-9]*; do
+    if [ "$(readlink "$p/root" 2>/dev/null)" = "$CHROOT_DIR" ]; then
+        pid="${p#/proc/}"
+        kill -9 "$pid" 2>/dev/null || true
+    fi
+done
 pkill -9 -f "tailscaled" 2>/dev/null || true
 pkill -9 -f "$CHROOT_DIR" 2>/dev/null || true
+
+# Brief pause to allow kernel to reclaim file descriptors
+sleep 1
 
 echo "[*] Safely unmounting virtual filesystems (lazy umount)..."
 # Unmount standard submounts first
@@ -34,7 +47,6 @@ for m in "$CHROOT_DIR/dev/pts" "$CHROOT_DIR/dev/net" "$CHROOT_DIR/dev" "$CHROOT_
 done
 
 # Unmount any remaining submounts under CHROOT_DIR in /proc/mounts
-# (Avoids non-standard 'umount -R' which fails on Android toybox)
 grep " $CHROOT_DIR" /proc/mounts 2>/dev/null | while read -r _ mpoint _; do
     [ -n "$mpoint" ] && umount -l "$mpoint" 2>/dev/null || true
 done
