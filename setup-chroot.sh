@@ -27,31 +27,46 @@ setenforce 0 2>/dev/null || true
 
 # 2. Clean up previous installation if present
 if [ -d "$CHROOT_DIR" ]; then
-    echo "[*] Existing $CHROOT_DIR directory found. Cleaning up..."
+    echo "[*] Existing $CHROOT_DIR directory found. Safely cleaning up..."
     umount -l "$CHROOT_DIR/dev/pts" 2>/dev/null || true
     umount -l "$CHROOT_DIR/dev" 2>/dev/null || true
     umount -l "$CHROOT_DIR/proc" 2>/dev/null || true
     umount -l "$CHROOT_DIR/sys" 2>/dev/null || true
-    rm -rf "$CHROOT_DIR"
+    sleep 1
+    rm -rf "$CHROOT_DIR" 2>/dev/null || true
 fi
 
 mkdir -p "$CHROOT_DIR"
 mkdir -p "$TMP_DIR"
 cd "$TMP_DIR"
 
-# 3. Download Alpine RootFS
+# 3. Detect Downloader (curl or wget on Android / Termux)
+if command -v curl >/dev/null 2>&1; then
+    FETCH="curl -L -o"
+elif [ -x /data/data/com.termux/files/usr/bin/curl ]; then
+    FETCH="/data/data/com.termux/files/usr/bin/curl -L -o"
+elif command -v wget >/dev/null 2>&1; then
+    FETCH="wget -O"
+elif [ -x /data/data/com.termux/files/usr/bin/wget ]; then
+    FETCH="/data/data/com.termux/files/usr/bin/wget -O"
+else
+    echo "[!] Neither curl nor wget found! Please install curl in Termux (pkg install curl)."
+    exit 1
+fi
+
+# 4. Download Alpine RootFS
 if [ ! -f "$ALPINE_TAR" ]; then
     echo "[*] Downloading Alpine Linux (${ALPINE_TAR})..."
-    curl -L -o "$ALPINE_TAR" "$ALPINE_URL"
+    $FETCH "$ALPINE_TAR" "$ALPINE_URL"
 else
     echo "[*] Archive already downloaded: $TMP_DIR/$ALPINE_TAR"
 fi
 
-# 4. Extract Archive
+# 5. Extract Archive
 echo "[*] Extracting rootfs to $CHROOT_DIR..."
 tar -xpf "$ALPINE_TAR" -C "$CHROOT_DIR"
 
-# 5. Configure DNS and Networking
+# 6. Configure DNS and Networking
 echo "[*] Configuring DNS..."
 mkdir -p "$CHROOT_DIR/etc"
 cat << 'EOF' > "$CHROOT_DIR/etc/resolv.conf"
@@ -69,7 +84,7 @@ aid_net_raw:x:3004:root
 aid_net_admin:x:3005:root
 EOF
 
-# 6. Check and create /dev/net/tun if missing
+# 7. Check and create /dev/net/tun if missing
 if [ ! -c /dev/net/tun ]; then
     echo "[*] Creating /dev/net/tun character device..."
     mkdir -p /dev/net
@@ -77,25 +92,42 @@ if [ ! -c /dev/net/tun ]; then
     chmod 666 /dev/net/tun 2>/dev/null || true
 fi
 
-# 7. Mount Virtual Filesystems for Package Setup
-echo "[*] Mounting virtual filesystems..."
-mount -t proc proc "$CHROOT_DIR/proc"
-mount -t sysfs sys "$CHROOT_DIR/sys"
-mount --bind /dev "$CHROOT_DIR/dev"
-mkdir -p "$CHROOT_DIR/dev/pts"
-mount -t devpts devpts "$CHROOT_DIR/dev/pts"
+# 8. Mount Virtual Filesystems (with duplication check)
+mount_if_needed() {
+    target="$1"
+    shift
+    if ! grep -q " $target " /proc/mounts 2>/dev/null; then
+        echo "[*] Mounting: $target"
+        mount "$@" "$target"
+    fi
+}
 
-# 8. Update Repositories and Install Packages
+mount_if_needed "$CHROOT_DIR/proc" -t proc proc
+mount_if_needed "$CHROOT_DIR/sys" -t sysfs sys
+mount_if_needed "$CHROOT_DIR/dev" --bind /dev
+mkdir -p "$CHROOT_DIR/dev/pts"
+mount_if_needed "$CHROOT_DIR/dev/pts" -t devpts devpts
+
+# Prevent mounts from leaking back to Android host namespaces
+mount --make-rslave "$CHROOT_DIR" 2>/dev/null || true
+
+# 9. Update Repositories and Install Packages
 echo "[*] Updating Alpine repositories and installing packages..."
 cat << EOF > "$CHROOT_DIR/etc/apk/repositories"
 https://dl-cdn.alpinelinux.org/alpine/${ALPINE_VER}/main
 https://dl-cdn.alpinelinux.org/alpine/${ALPINE_VER}/community
 EOF
 
-chroot "$CHROOT_DIR" /bin/sh -c "apk update && apk add --no-cache tailscale openssh iptables ip6tables ca-certificates curl bash neovim tmux"
+# Note: In Alpine, the 'iptables' package includes both iptables and ip6tables.
+# We set standard Linux PATH so apk post-install scripts and binaries execute correctly.
+chroot "$CHROOT_DIR" /usr/bin/env -i \
+    PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+    TERM=xterm-256color \
+    HOME=/root \
+    /bin/sh -c "apk update && apk add --no-cache tailscale openssh iptables ca-certificates curl bash neovim tmux"
 
 # Tailscale runtime directories
-mkdir -p "$CHROOT_DIR/var/lib/tailscale" "$CHROOT_DIR/run/tailscale"
+mkdir -p "$CHROOT_DIR/var/lib/tailscale" "$CHROOT_DIR/run/tailscale" "$CHROOT_DIR/var/run/tailscale"
 
 echo "========================================================"
 echo "[+] SETUP COMPLETED SUCCESSFULLY!"

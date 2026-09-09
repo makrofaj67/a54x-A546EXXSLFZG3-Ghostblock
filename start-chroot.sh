@@ -55,11 +55,12 @@ nameserver 8.8.8.8
 EOF
 
 # 5. Start tailscaled (if not already running)
-mkdir -p "$CHROOT_DIR/var/lib/tailscale" "$CHROOT_DIR/run/tailscale"
+mkdir -p "$CHROOT_DIR/var/lib/tailscale" "$CHROOT_DIR/run/tailscale" "$CHROOT_DIR/var/run/tailscale"
 if ! pgrep -f "tailscaled" > /dev/null 2>&1; then
     echo "[*] Starting tailscaled daemon..."
-    chroot "$CHROOT_DIR" /bin/sh -c \
-        "tailscaled --state=/var/lib/tailscale/tailscaled.state --socket=/run/tailscale/tailscaled.sock > /var/log/tailscaled.log 2>&1 &"
+    chroot "$CHROOT_DIR" /usr/bin/env \
+        PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+        tailscaled --state=/var/lib/tailscale/tailscaled.state --socket=/run/tailscale/tailscaled.sock > "$CHROOT_DIR/var/log/tailscaled.log" 2>&1 &
     sleep 1
 else
     echo "[*] tailscaled is already running."
@@ -72,7 +73,9 @@ case "$1" in
         ;;
     up)
         echo "[*] Triggering Tailscale connection..."
-        chroot "$CHROOT_DIR" /usr/bin/tailscale --socket=/run/tailscale/tailscaled.sock up
+        chroot "$CHROOT_DIR" /usr/bin/env \
+            PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+            tailscale --socket=/run/tailscale/tailscaled.sock up
         ;;
     *)
         echo "[+] Entering chroot environment (/bin/bash)..."
